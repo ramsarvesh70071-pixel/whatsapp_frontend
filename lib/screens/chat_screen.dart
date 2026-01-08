@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/message_model.dart';
 import '../services/websocket_service.dart';
+import '../services/api_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final String myPhone;
@@ -16,38 +17,49 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _controller = TextEditingController();
   List<ChatMessage> messages = [];
   late WebSocketService wsService;
+  bool isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    // WebSocket connect aur message receive logic
+    _loadHistory();
     wsService = WebSocketService(onMessageReceived: (data) {
       setState(() {
-        // Bahar se aane wala message list mein upar add hoga
         messages.insert(0, ChatMessage.fromJson(data));
       });
     });
     wsService.connect(widget.myPhone);
   }
 
+  void _loadHistory() async {
+    try {
+      var historyData = await ApiService.getChatHistory(widget.myPhone, widget.targetPhone);
+      List<ChatMessage> historyMessages = historyData
+          .map((item) => ChatMessage.fromJson(item))
+          .toList();
+
+      setState(() {
+        messages = historyMessages.reversed.toList();
+        isLoading = false;
+      });
+    } catch (e) {
+      print("History load karne mein error: $e");
+      setState(() => isLoading = false);
+    }
+  }
+
   void _send() {
     if (_controller.text.trim().isNotEmpty) {
-      // 1. Message object banayein
       var msg = ChatMessage(
         senderId: widget.myPhone,
         recipientId: widget.targetPhone,
         content: _controller.text.trim(),
         type: "TEXT",
       );
-
-      // 2. Backend ko bhejein (Isse pgAdmin mein data jayega)
       wsService.sendMessage(msg.toJson());
-
-      // 3. Apni screen par turant dikhayein
       setState(() {
         messages.insert(0, msg);
       });
-
       _controller.clear();
     }
   }
@@ -62,8 +74,10 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: ListView.builder(
-              reverse: true, // Naye messages niche se upar aayenge
+            child: isLoading
+                ? Center(child: CircularProgressIndicator())
+                : ListView.builder(
+              reverse: true,
               itemCount: messages.length,
               itemBuilder: (context, index) {
                 bool isMe = messages[index].senderId == widget.myPhone;
@@ -73,7 +87,15 @@ class _ChatScreenState extends State<ChatScreen> {
                     margin: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     padding: EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: isMe ? Colors.teal[100] : Colors.grey[200],
+                      color: isMe ? Colors.teal[100] : Colors.white,
+                      // FIXED: Elevation hata kar boxShadow add kiya hai
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 2,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
                       borderRadius: BorderRadius.only(
                         topLeft: Radius.circular(15),
                         topRight: Radius.circular(15),
@@ -81,16 +103,21 @@ class _ChatScreenState extends State<ChatScreen> {
                         bottomRight: isMe ? Radius.circular(0) : Radius.circular(15),
                       ),
                     ),
-                    child: Text(messages[index].content),
+                    child: Text(
+                      messages[index].content,
+                      style: TextStyle(fontSize: 16),
+                    ),
                   ),
                 );
               },
             ),
           ),
-          // --- Input Area Fixed ---
           Container(
             padding: EdgeInsets.all(8.0),
-            color: Colors.white,
+            decoration: BoxDecoration(
+                color: Colors.white,
+                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)]
+            ),
             child: Row(
               children: [
                 Expanded(
@@ -101,7 +128,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(25)),
                       contentPadding: EdgeInsets.symmetric(horizontal: 20),
                     ),
-                    onSubmitted: (_) => _send(), // Enter dabane par bhi bhejega
+                    onSubmitted: (_) => _send(),
                   ),
                 ),
                 SizedBox(width: 8),
@@ -109,7 +136,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   backgroundColor: Colors.teal,
                   child: IconButton(
                     icon: Icon(Icons.send, color: Colors.white),
-                    onPressed: _send, // FIX: Ab button kaam karega
+                    onPressed: _send,
                   ),
                 ),
               ],

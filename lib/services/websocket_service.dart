@@ -12,7 +12,7 @@ class WebSocketService {
 
     client = StompClient(
       config: StompConfig(
-        url: 'ws://localhost:8080/ws', // Backend URL
+        url: 'wss://ram-backend-ipu1.onrender.com/ws',// Backend URL
         onConnect: (StompFrame frame) {
           print("STOMP Connected successfully as $myPhone");
 
