@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "373574523890",
+    "project_id": "rsm-whatsapp-backend",
+    "storage_bucket": "rsm-whatsapp-backend.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:373574523890:android:16b6fe81d525392b8f696b",
+        "android_client_info": {
+          "package_name": "com.example.rsm_whatsapp_flutter"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAcSwI5bkMD0owWdc6F5pNeQ4y87ZJdE6U"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
