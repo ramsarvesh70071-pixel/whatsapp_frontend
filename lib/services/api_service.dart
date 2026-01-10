@@ -22,7 +22,7 @@ class ApiService {
     return null;
   }
 
-  // 2. Fetch All Registered Users (For User List)
+  // 2. Fetch All Registered Users
   static Future<List<UserModel>> getAllUsers() async {
     try {
       final response = await http.get(Uri.parse("$baseUrl/users"));
@@ -36,18 +36,38 @@ class ApiService {
     return [];
   }
 
-  // 3. Fetch Chat History (For Message Persistence)
+  // 3. Fetch Chat History
   static Future<List<dynamic>> getChatHistory(String senderId, String recipientId) async {
     try {
       final response = await http.get(
         Uri.parse("$baseUrl/messages/$senderId/$recipientId"),
       );
       if (response.statusCode == 200) {
-        return jsonDecode(response.body); // List of messages
+        return jsonDecode(response.body);
       }
     } catch (e) {
       print("Error fetching history: $e");
     }
     return [];
+  }
+
+  // 4. Update Profile (Naya Feature)
+  static Future<bool> updateProfile(String phone, String name, String about, String? imageUrl) async {
+    try {
+      final response = await http.put(
+        Uri.parse("$baseUrl/users/update"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "phoneNumber": phone,
+          "fullName": name,
+          "about": about,
+          "profilePic": imageUrl
+        }),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print("Profile update error: $e");
+      return false;
+    }
   }
 }

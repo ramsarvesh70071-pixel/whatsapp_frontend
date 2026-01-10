@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:image_picker/image_picker.dart'; // Add this package
+import 'dart:io';
 import '../models/message_model.dart';
 import '../services/websocket_service.dart';
 import '../services/api_service.dart';
@@ -6,13 +9,9 @@ import '../services/api_service.dart';
 class ChatScreen extends StatefulWidget {
   final String myPhone;
   final String targetPhone;
-  final String targetName; // Fixed: Ise yahan define kiya taaki widget.targetName use ho sake
+  final String targetName;
 
-  ChatScreen({
-    required this.myPhone,
-    required this.targetPhone,
-    required this.targetName, // Constructor update kiya
-  });
+  ChatScreen({required this.myPhone, required this.targetPhone, required this.targetName});
 
   @override
   _ChatScreenState createState() => _ChatScreenState();
@@ -20,105 +19,102 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _controller = TextEditingController();
+  final ImagePicker _picker = ImagePicker();
   List<ChatMessage> messages = [];
   late WebSocketService wsService;
+  bool isTargetTyping = false;
   bool isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _loadHistory();
-    wsService = WebSocketService(onMessageReceived: (data) {
-      // Check: Message isi user se juda hai ya nahi
-      if (data['senderId'] == widget.targetPhone || data['senderId'] == widget.myPhone) {
-        setState(() {
-          messages.insert(0, ChatMessage.fromJson(data));
-        });
-      }
-    });
+    wsService = WebSocketService(
+      onMessageReceived: (data) {
+        if (data['senderId'] == widget.targetPhone || data['senderId'] == widget.myPhone) {
+          setState(() => messages.insert(0, ChatMessage.fromJson(data)));
+        }
+      },
+      onTypingStatus: (senderId, isTyping) {
+        if (senderId == widget.targetPhone) {
+          setState(() => isTargetTyping = isTyping);
+        }
+      },
+    );
     wsService.connect(widget.myPhone);
   }
 
-  void _loadHistory() async {
-    try {
-      var historyData = await ApiService.getChatHistory(widget.myPhone, widget.targetPhone);
-      List<ChatMessage> historyMessages = historyData
-          .map((item) => ChatMessage.fromJson(item))
-          .toList();
-
-      setState(() {
-        messages = historyMessages.reversed.toList();
-        isLoading = false;
-      });
-    } catch (e) {
-      print("History load karne mein error: $e");
-      setState(() => isLoading = false);
-    }
-  }
-
-  void _send() {
-    if (_controller.text.trim().isNotEmpty) {
+  // --- IMAGE PICKER FUNCTION ---
+  Future<void> _pickImage(ImageSource source) async {
+    final XFile? selectedImage = await _picker.pickImage(source: source);
+    if (selectedImage != null) {
+      // Yahan aapko image ko Cloudinary ya backend pe upload karke URL lena hoga
+      // Filhal main dummy URL bhej raha hoon logic dikhane ke liye
       var msg = ChatMessage(
         senderId: widget.myPhone,
         recipientId: widget.targetPhone,
-        content: _controller.text.trim(),
-        type: "TEXT",
+        content: "Sent an image",
+        type: "IMAGE",
+        mediaUrl: selectedImage.path, // Local path for instant preview
+        timestamp: DateTime.now(),
       );
+
       wsService.sendMessage(msg.toJson());
-      setState(() {
-        messages.insert(0, msg);
-      });
-      _controller.clear();
+      setState(() => messages.insert(0, msg));
     }
+  }
+
+  void _loadHistory() async {
+    var historyData = await ApiService.getChatHistory(widget.myPhone, widget.targetPhone);
+    setState(() {
+      messages = historyData.map((item) => ChatMessage.fromJson(item)).toList().reversed.toList();
+      isLoading = false;
+    });
+  }
+
+  void _send() {
+    if (_controller.text.trim().isEmpty) return;
+    var msg = ChatMessage(
+      senderId: widget.myPhone,
+      recipientId: widget.targetPhone,
+      content: _controller.text.trim(),
+      type: "TEXT",
+      timestamp: DateTime.now(),
+    );
+    wsService.sendMessage(msg.toJson());
+    setState(() => messages.insert(0, msg));
+    _controller.clear();
+    wsService.sendTyping(widget.myPhone, widget.targetPhone, false);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.targetName), // Ab ye error nahi dega
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(widget.targetName),
+            if (isTargetTyping)
+              Text("typing...", style: TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: Colors.white70)),
+          ],
+        ),
         backgroundColor: Colors.teal.shade800,
-        foregroundColor: Colors.white,
       ),
       body: Container(
         decoration: BoxDecoration(
-          color: Color(0xFFE5DDD5), // WhatsApp Chat Background
+            image: DecorationImage(
+                image: NetworkImage("https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png"),
+                fit: BoxFit.cover
+            )
         ),
         child: Column(
           children: [
             Expanded(
-              child: isLoading
-                  ? Center(child: CircularProgressIndicator(color: Colors.teal))
-                  : ListView.builder(
+              child: ListView.builder(
                 reverse: true,
-                padding: EdgeInsets.all(12),
                 itemCount: messages.length,
-                itemBuilder: (context, index) {
-                  bool isMe = messages[index].senderId == widget.myPhone;
-                  return Align(
-                    alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                    child: Container(
-                      margin: EdgeInsets.symmetric(vertical: 4),
-                      padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: isMe ? Color(0xFFDCF8C6) : Colors.white,
-                        borderRadius: BorderRadius.only(
-                          topLeft: Radius.circular(12),
-                          topRight: Radius.circular(12),
-                          bottomLeft: isMe ? Radius.circular(12) : Radius.circular(0),
-                          bottomRight: isMe ? Radius.circular(0) : Radius.circular(12),
-                        ),
-                        boxShadow: [
-                          BoxShadow(color: Colors.black12, blurRadius: 1)
-                        ],
-                      ),
-                      child: Text(
-                        messages[index].content,
-                        style: TextStyle(fontSize: 16),
-                      ),
-                    ),
-                  );
-                },
+                itemBuilder: (context, index) => _buildMessageBubble(messages[index]),
               ),
             ),
             _buildInputArea(),
@@ -128,38 +124,75 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _buildMessageBubble(ChatMessage msg) {
+    bool isMe = msg.senderId == widget.myPhone;
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        padding: EdgeInsets.all(8),
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+        decoration: BoxDecoration(
+          color: isMe ? Color(0xFFDCF8C6) : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (msg.type == "IMAGE" && msg.mediaUrl != null)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: msg.mediaUrl!.startsWith('http')
+                    ? Image.network(msg.mediaUrl!)
+                    : Image.file(File(msg.mediaUrl!)),
+              ),
+            if (msg.content.isNotEmpty && msg.type == "TEXT")
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Text(msg.content, style: TextStyle(fontSize: 16)),
+              ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(DateFormat('hh:mm a').format(msg.timestamp), style: TextStyle(fontSize: 10, color: Colors.grey)),
+                if (isMe) Icon(Icons.done_all, size: 14, color: Colors.blue),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildInputArea() {
     return Container(
-      padding: EdgeInsets.all(8.0),
-      decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)]
-      ),
+      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      color: Colors.transparent,
       child: Row(
         children: [
           Expanded(
-            child: TextField(
-              controller: _controller,
-              decoration: InputDecoration(
-                hintText: "Type a message...",
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(25),
-                  borderSide: BorderSide.none,
-                ),
-                fillColor: Colors.grey.shade100,
-                filled: true,
-                contentPadding: EdgeInsets.symmetric(horizontal: 20),
+            child: Container(
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(25)),
+              child: Row(
+                children: [
+                  IconButton(icon: Icon(Icons.emoji_emotions_outlined, color: Colors.grey), onPressed: () {}),
+                  Expanded(
+                    child: TextField(
+                      controller: _controller,
+                      onChanged: (v) => wsService.sendTyping(widget.myPhone, widget.targetPhone, v.isNotEmpty),
+                      decoration: InputDecoration(hintText: "Message", border: InputBorder.none),
+                    ),
+                  ),
+                  IconButton(icon: Icon(Icons.camera_alt, color: Colors.grey), onPressed: () => _pickImage(ImageSource.camera)),
+                  IconButton(icon: Icon(Icons.attach_file, color: Colors.grey), onPressed: () => _pickImage(ImageSource.gallery)),
+                ],
               ),
-              onSubmitted: (_) => _send(),
             ),
           ),
-          SizedBox(width: 8),
+          SizedBox(width: 5),
           CircleAvatar(
             backgroundColor: Colors.teal.shade800,
-            child: IconButton(
-              icon: Icon(Icons.send, color: Colors.white, size: 20),
-              onPressed: _send,
-            ),
+            child: IconButton(icon: Icon(Icons.send, color: Colors.white), onPressed: _send),
           ),
         ],
       ),

@@ -4,38 +4,36 @@ import 'package:stomp_dart_client/stomp_dart_client.dart';
 class WebSocketService {
   StompClient? client;
   final Function(dynamic) onMessageReceived;
+  final Function(String, bool)? onTypingStatus;
 
-  WebSocketService({required this.onMessageReceived});
+  WebSocketService({required this.onMessageReceived, this.onTypingStatus});
 
   void connect(String myPhone) {
-    if (client != null && client!.connected) return; // Pehle se connected hai toh dubara na karein
-
     client = StompClient(
       config: StompConfig(
-        url: 'wss://ram-backend-ipu1.onrender.com/ws',// Backend URL
-        onConnect: (StompFrame frame) {
-          print("STOMP Connected successfully as $myPhone");
-
-          // Subscribe to private queue
+        url: 'wss://ram-backend-ipu1.onrender.com/ws',
+        onConnect: (frame) {
+          // Subscribe to Messages
           client?.subscribe(
             destination: '/user/$myPhone/queue/messages',
-            callback: (StompFrame frame) {
+            callback: (frame) {
               if (frame.body != null) {
-                print("RAW MESSAGE RECEIVED FROM SERVER: ${frame.body}");
-                try {
-                  final dynamic data = jsonDecode(frame.body!);
-                  onMessageReceived(data);
-                } catch (e) {
-                  print("Error decoding message: $e");
-                }
+                onMessageReceived(jsonDecode(frame.body!));
+              }
+            },
+          );
+
+          // Subscribe to Typing Status
+          client?.subscribe(
+            destination: '/user/$myPhone/queue/typing',
+            callback: (frame) {
+              if (frame.body != null) {
+                var data = jsonDecode(frame.body!);
+                onTypingStatus?.call(data['senderId'], data['isTyping']);
               }
             },
           );
         },
-        onWebSocketError: (e) => print("WebSocket Error: $e"),
-        onStompError: (d) => print("STOMP Error: ${d.body}"),
-        onDisconnect: (f) => print("Disconnected from WebSocket"),
-        // Heartbeat helps in keeping the connection alive on Chrome
         stompConnectHeaders: {'heart-beat': '10000,10000'},
         webSocketConnectHeaders: {'heart-beat': '10000,10000'},
       ),
@@ -43,19 +41,18 @@ class WebSocketService {
     client?.activate();
   }
 
+  void sendTyping(String myPhone, String targetPhone, bool isTyping) {
+    client?.send(
+      destination: '/app/chat.typing',
+      body: jsonEncode({'senderId': myPhone, 'recipientId': targetPhone, 'isTyping': isTyping}),
+    );
+  }
+
   void sendMessage(Map<String, dynamic> msg) {
     if (client != null && client!.connected) {
-      print("Sending to /app/chat.send: $msg");
-      client?.send(
-        destination: '/app/chat.send',
-        body: jsonEncode(msg),
-      );
-    } else {
-      print("Error: Cannot send message. WebSocket is not connected!");
+      client?.send(destination: '/app/chat.send', body: jsonEncode(msg));
     }
   }
 
-  void disconnect() {
-    client?.deactivate();
-  }
+  void disconnect() => client?.deactivate();
 }
