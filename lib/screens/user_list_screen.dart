@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/user_model.dart';
 import '../services/api_service.dart';
 import 'chat_screen.dart';
+import 'profile_screen.dart'; // Is file ko create karna hoga jo maine pehle di thi
 
 class UserListScreen extends StatefulWidget {
   final UserModel currentUser;
@@ -12,16 +13,49 @@ class UserListScreen extends StatefulWidget {
 }
 
 class _UserListScreenState extends State<UserListScreen> {
+  String searchQuery = "";
+  bool isSearching = false;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("RSM WhatsApp", style: TextStyle(fontWeight: FontWeight.bold)),
+        title: isSearching
+            ? TextField(
+          autofocus: true,
+          style: TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            hintText: "Search contacts...",
+            hintStyle: TextStyle(color: Colors.white70),
+            border: InputBorder.none,
+          ),
+          onChanged: (val) => setState(() => searchQuery = val),
+        )
+            : Text("RSM WhatsApp", style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.teal.shade800,
         foregroundColor: Colors.white,
         actions: [
-          IconButton(icon: Icon(Icons.search), onPressed: () {}),
-          IconButton(icon: Icon(Icons.more_vert), onPressed: () {}),
+          IconButton(
+            icon: Icon(isSearching ? Icons.close : Icons.search),
+            onPressed: () => setState(() {
+              isSearching = !isSearching;
+              if (!isSearching) searchQuery = "";
+            }),
+          ),
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'profile') {
+                Navigator.push(context, MaterialPageRoute(
+                    builder: (_) => ProfileScreen(user: widget.currentUser)
+                ));
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(value: 'profile', child: Text("Profile")),
+              PopupMenuItem(value: 'settings', child: Text("Settings")),
+              PopupMenuItem(value: 'logout', child: Text("Logout")),
+            ],
+          ),
         ],
       ),
       body: FutureBuilder<List<UserModel>>(
@@ -32,8 +66,13 @@ class _UserListScreenState extends State<UserListScreen> {
           if (!snapshot.hasData || snapshot.data!.isEmpty)
             return Center(child: Text("No contacts found"));
 
-          // Filter: Apne aap ko list se hatayein
-          final users = snapshot.data!.where((u) => u.phoneNumber != widget.currentUser.phoneNumber).toList();
+          // Filter: Apne aap ko hatayein aur Search filter lagayein
+          final users = snapshot.data!.where((u) {
+            bool isNotMe = u.phoneNumber != widget.currentUser.phoneNumber;
+            bool matchesSearch = u.name.toLowerCase().contains(searchQuery.toLowerCase()) ||
+                u.phoneNumber.contains(searchQuery);
+            return isNotMe && matchesSearch;
+          }).toList();
 
           return ListView.separated(
             itemCount: users.length,
@@ -68,7 +107,7 @@ class _UserListScreenState extends State<UserListScreen> {
         },
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => setState(() {}), // Refresh list
+        onPressed: () => setState(() {}),
         backgroundColor: Colors.teal.shade800,
         child: Icon(Icons.message, color: Colors.white),
       ),
